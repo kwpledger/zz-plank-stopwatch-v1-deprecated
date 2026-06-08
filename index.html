@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Plank Stopwatch</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f0f;
+      --surface: #1a1a1a;
+      --border: #2a2a2a;
+      --text: #f0f0f0;
+      --muted: #888;
+      --accent: #4ade80;
+      --accent-dim: #166534;
+      --danger: #f87171;
+      --warn: #facc15;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2rem;
+      padding: 1.5rem;
+    }
+
+    h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* Timer display */
+    #timer {
+      font-size: clamp(4rem, 20vw, 8rem);
+      font-variant-numeric: tabular-nums;
+      font-weight: 200;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      color: var(--text);
+      transition: color 0.3s;
+    }
+
+    #timer.active { color: var(--accent); }
+
+    /* Status badge */
+    #status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+      color: var(--muted);
+      min-height: 1.5rem;
+    }
+
+    #status .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+    }
+
+    #status.listening .dot { background: var(--accent); animation: pulse 1.5s infinite; }
+    #status.active .dot    { background: var(--accent); animation: pulse 0.8s infinite; }
+    #status.error .dot     { background: var(--danger); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    /* Mic button */
+    #mic-btn {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 1.8rem;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s, transform 0.1s;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    #mic-btn:hover  { border-color: var(--accent); }
+    #mic-btn.on     { border-color: var(--accent); background: var(--accent-dim); }
+    #mic-btn:active { transform: scale(0.95); }
+
+    /* Manual buttons */
+    .btn-row {
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    .btn {
+      padding: 0.55rem 1.4rem;
+      border-radius: 0.5rem;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .btn:hover { border-color: var(--accent); }
+    .btn.start { border-color: var(--accent); color: var(--accent); }
+    .btn.stop  { border-color: var(--danger); color: var(--danger); }
+    .btn:disabled { opacity: 0.35; pointer-events: none; }
+
+    /* Personal bests */
+    #pb-section {
+      width: 100%;
+      max-width: 380px;
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      overflow: hidden;
+    }
+
+    #pb-section summary {
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    #pb-section summary::-webkit-details-marker { display: none; }
+    #pb-section summary::after { content: "▾"; transition: transform 0.2s; }
+    #pb-section[open] summary::after { transform: rotate(-180deg); }
+
+    #pb-list {
+      padding: 0 1rem 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .pb-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.9rem;
+      padding: 0.35rem 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .pb-row .pb-time { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--accent); }
+    .pb-row .pb-date { color: var(--muted); font-size: 0.8rem; }
+    .pb-row.new-best .pb-time::after { content: " 🏆"; }
+
+    #pb-empty { color: var(--muted); font-size: 0.85rem; font-style: italic; padding: 0.25rem 0; }
+
+    /* Voice hint */
+    #hint {
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    #heard {
+      font-size: 0.8rem;
+      color: var(--warn);
+      min-height: 1.2rem;
+      text-align: center;
+      font-style: italic;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    #heard.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <h1>Plank Stopwatch</h1>
+
+  <div id="timer">0:00.0</div>
+
+  <div id="status">
+    <span class="dot"></span>
+    <span id="status-text">Click mic to enable voice</span>
+  </div>
+
+  <div id="heard"></div>
+
+  <button id="mic-btn" title="Toggle voice recognition">🎤</button>
+
+  <div class="btn-row">
+    <button class="btn start" id="btn-start" onclick="startTimer()">Start</button>
+    <button class="btn stop"  id="btn-stop"  onclick="stopTimer()" disabled>Stop</button>
+  </div>
+
+  <details id="pb-section">
+    <summary>Personal Bests</summary>
+    <div id="pb-list">
+      <span id="pb-empty">No sessions recorded yet.</span>
+    </div>
+  </details>
+
+  <div id="hint">
+    Say <strong>"up"</strong> or <strong>"start"</strong> to begin<br>
+    Say <strong>"down"</strong> or <strong>"stop"</strong> to end
+  </div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let running   = false;
+let startTime = 0;
+let elapsed   = 0;       // ms
+let rafId     = null;
+let nextAnnounce = 15;   // seconds until next spoken update
+let recognition  = null;
+let micOn        = false;
+
+const STORAGE_KEY = 'plank-pb';
+const START_WORDS  = new Set(['up', 'start', 'go', 'begin']);
+const STOP_WORDS   = new Set(['down', 'stop', 'done', 'finish', 'end']);
+
+// ── Timer ────────────────────────────────────────────────────────────────────
+function startTimer() {
+  if (running) return;
+  running   = true;
+  startTime = performance.now() - elapsed;
+  nextAnnounce = 15;
+  rafId = requestAnimationFrame(tick);
+  document.getElementById('timer').classList.add('active');
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-stop').disabled  = false;
+  setStatus('active', 'Timing…');
+}
+
+function stopTimer() {
+  if (!running) return;
+  running = false;
+  cancelAnimationFrame(rafId);
+  document.getElementById('timer').classList.remove('active');
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-stop').disabled  = true;
+
+  const seconds = elapsed / 1000;
+  savePB(seconds);
+  renderPBs();
+  speak(`Stopped. Time: ${formatSpoken(seconds)}`);
+  setStatus(micOn ? 'listening' : 'idle', micOn ? 'Listening…' : 'Click mic to enable voice');
+  elapsed = 0;
+  renderTime(0);
+}
+
+function tick(now) {
+  if (!running) return;
+  elapsed = now - startTime;
+  renderTime(elapsed);
+
+  const secs = elapsed / 1000;
+  if (secs >= nextAnnounce) {
+    speak(formatSpoken(nextAnnounce));
+    nextAnnounce += 15;
+  }
+
+  rafId = requestAnimationFrame(tick);
+}
+
+function renderTime(ms) {
+  const totalTenths = Math.floor(ms / 100);
+  const tenths  = totalTenths % 10;
+  const seconds = Math.floor(ms / 1000) % 60;
+  const minutes = Math.floor(ms / 60000);
+  const s = String(seconds).padStart(2, '0');
+  document.getElementById('timer').textContent =
+    minutes > 0 ? `${minutes}:${s}.${tenths}` : `0:${s}.${tenths}`;
+}
+
+function formatSpoken(secs) {
+  const m = Math.floor(secs / 60);
+  const s = Math.round(secs % 60);
+  if (m === 0) return `${s} second${s !== 1 ? 's' : ''}`;
+  if (s === 0) return `${m} minute${m !== 1 ? 's' : ''}`;
+  return `${m} minute${m !== 1 ? 's' : ''} ${s} second${s !== 1 ? 's' : ''}`;
+}
+
+// ── Speech synthesis ─────────────────────────────────────────────────────────
+function speak(text) {
+  if (!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.rate   = 1.1;
+  utt.volume = 0.9;
+  window.speechSynthesis.speak(utt);
+}
+
+// ── Speech recognition ───────────────────────────────────────────────────────
+document.getElementById('mic-btn').addEventListener('click', toggleMic);
+
+function toggleMic() {
+  if (micOn) { stopMic(); } else { startMic(); }
+}
+
+function startMic() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    setStatus('error', 'Speech recognition not supported in this browser');
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.continuous    = true;
+  recognition.interimResults = false;
+  recognition.lang          = 'en-US';
+
+  recognition.onstart = () => {
+    micOn = true;
+    document.getElementById('mic-btn').classList.add('on');
+    setStatus(running ? 'active' : 'listening', running ? 'Timing…' : 'Listening…');
+  };
+
+  recognition.onresult = (e) => {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (!e.results[i].isFinal) continue;
+      const word = e.results[i][0].transcript.trim().toLowerCase();
+      showHeard(word);
+      if (!running && START_WORDS.has(word))  startTimer();
+      if ( running && STOP_WORDS.has(word))   stopTimer();
+    }
+  };
+
+  recognition.onerror = (e) => {
+    if (e.error === 'no-speech') return; // normal
+    setStatus('error', `Mic error: ${e.error}`);
+  };
+
+  recognition.onend = () => {
+    // auto-restart so it keeps listening
+    if (micOn) recognition.start();
+  };
+
+  recognition.start();
+}
+
+function stopMic() {
+  micOn = false;
+  if (recognition) { recognition.onend = null; recognition.stop(); recognition = null; }
+  document.getElementById('mic-btn').classList.remove('on');
+  setStatus('idle', 'Click mic to enable voice');
+}
+
+function showHeard(word) {
+  const el = document.getElementById('heard');
+  el.textContent = `Heard: "${word}"`;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+// ── Status ───────────────────────────────────────────────────────────────────
+function setStatus(cls, text) {
+  const el = document.getElementById('status');
+  el.className = cls;
+  document.getElementById('status-text').textContent = text;
+}
+
+// ── Personal bests ───────────────────────────────────────────────────────────
+function loadPBs() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+  catch { return []; }
+}
+
+function savePB(seconds) {
+  if (seconds < 2) return; // ignore accidental stops
+  const pbs = loadPBs();
+  pbs.push({ seconds: Math.round(seconds * 10) / 10, date: new Date().toISOString() });
+  pbs.sort((a, b) => b.seconds - a.seconds);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(pbs.slice(0, 10)));
+}
+
+function renderPBs() {
+  const pbs  = loadPBs();
+  const list = document.getElementById('pb-list');
+  const empty = document.getElementById('pb-empty');
+
+  if (pbs.length === 0) { empty.style.display = ''; return; }
+  empty.style.display = 'none';
+
+  const existing = list.querySelectorAll('.pb-row');
+  existing.forEach(el => el.remove());
+
+  pbs.forEach((pb, i) => {
+    const row  = document.createElement('div');
+    row.className = 'pb-row' + (i === 0 ? ' new-best' : '');
+    const date = new Date(pb.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    row.innerHTML = `<span class="pb-time">${formatSpoken(pb.seconds)}</span><span class="pb-date">${date}</span>`;
+    list.appendChild(row);
+  });
+
+  // Open the section so the user sees their result
+  document.getElementById('pb-section').open = true;
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+renderPBs();
+</script>
+</body>
+</html>
