@@ -122,6 +122,7 @@
     .btn:hover { border-color: var(--accent); }
     .btn.start { border-color: var(--accent); color: var(--accent); }
     .btn.stop  { border-color: var(--danger); color: var(--danger); }
+    .btn.done  { border-color: var(--muted);  color: var(--muted); }
     .btn:disabled { opacity: 0.35; pointer-events: none; }
 
     /* All-time best inline display */
@@ -284,6 +285,7 @@
   <div class="btn-row">
     <button class="btn start" id="btn-start" onclick="startTimer()">Start</button>
     <button class="btn stop"  id="btn-stop"  onclick="stopTimer()" disabled>Stop</button>
+    <button class="btn done"  id="btn-done"  onclick="doneSession()" disabled>Done</button>
   </div>
 
   <div id="result-card">
@@ -301,7 +303,7 @@
 
   <div id="hint">
     Say <strong>"up"</strong> or <strong>"start"</strong> to begin<br>
-    Say <strong>"down"</strong> or <strong>"stop"</strong> to end
+    Say <strong>"down"</strong> or <strong>"stop"</strong> to pause &nbsp;·&nbsp; <strong>"done"</strong> to finish
   </div>
 
 <script>
@@ -316,7 +318,8 @@ let micOn        = false;
 
 const STORAGE_KEY = 'plank-pb';
 const START_WORDS  = new Set(['up', 'start', 'go', 'begin']);
-const STOP_WORDS   = new Set(['down', 'stop', 'done', 'finish', 'end']);
+const STOP_WORDS   = new Set(['down', 'stop']);
+const DONE_WORDS   = new Set(['done', 'finish', 'end']);
 
 // ── Timer ────────────────────────────────────────────────────────────────────
 function startTimer() {
@@ -348,6 +351,11 @@ function stopTimer() {
   setStatus(micOn ? 'listening' : 'idle', micOn ? 'Listening…' : 'Click mic to enable voice');
   elapsed = 0;
   renderTime(0);
+}
+
+function doneSession() {
+  if (running) stopTimer();
+  stopMic();
 }
 
 function tick(now) {
@@ -414,6 +422,7 @@ function startMic() {
   recognition.onstart = () => {
     micOn = true;
     document.getElementById('mic-btn').classList.add('on');
+    document.getElementById('btn-done').disabled = false;
     setStatus(running ? 'active' : 'listening', running ? 'Timing…' : 'Listening…');
   };
 
@@ -424,11 +433,12 @@ function startMic() {
       showHeard(word);
       if (!running && START_WORDS.has(word))  startTimer();
       if ( running && STOP_WORDS.has(word))   stopTimer();
+      if ( running && DONE_WORDS.has(word))   doneSession();
     }
   };
 
   recognition.onerror = (e) => {
-    if (e.error === 'no-speech') return; // normal
+    if (e.error === 'no-speech' || e.error === 'aborted') return;
     setStatus('error', `Mic error: ${e.error}`);
   };
 
@@ -444,6 +454,7 @@ function stopMic() {
   micOn = false;
   if (recognition) { recognition.onend = null; recognition.stop(); recognition = null; }
   document.getElementById('mic-btn').classList.remove('on');
+  document.getElementById('btn-done').disabled = true;
   setStatus('idle', 'Click mic to enable voice');
 }
 
@@ -562,6 +573,10 @@ renderBestDisplay();
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js');
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && micOn) stopMic();
+});
 </script>
 </body>
 </html>
