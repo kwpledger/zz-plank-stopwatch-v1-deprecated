@@ -331,7 +331,6 @@ function startTimer() {
   document.getElementById('timer').classList.add('active');
   document.getElementById('btn-start').disabled = true;
   document.getElementById('btn-stop').disabled  = false;
-  document.getElementById('btn-done').disabled  = false;
   setStatus('active', 'Timing…');
 }
 
@@ -342,7 +341,6 @@ function stopTimer() {
   document.getElementById('timer').classList.remove('active');
   document.getElementById('btn-start').disabled = false;
   document.getElementById('btn-stop').disabled  = true;
-  document.getElementById('btn-done').disabled  = true;
 
   const seconds = elapsed / 1000;
   const prevBest = loadPBs()[0]?.seconds ?? null;
@@ -356,7 +354,7 @@ function stopTimer() {
 }
 
 function doneSession() {
-  stopTimer();
+  if (running) stopTimer();
   stopMic();
 }
 
@@ -424,6 +422,7 @@ function startMic() {
   recognition.onstart = () => {
     micOn = true;
     document.getElementById('mic-btn').classList.add('on');
+    document.getElementById('btn-done').disabled = false;
     setStatus(running ? 'active' : 'listening', running ? 'Timing…' : 'Listening…');
   };
 
@@ -439,7 +438,7 @@ function startMic() {
   };
 
   recognition.onerror = (e) => {
-    if (e.error === 'no-speech') return; // normal
+    if (e.error === 'no-speech' || e.error === 'aborted') return;
     setStatus('error', `Mic error: ${e.error}`);
   };
 
@@ -455,6 +454,7 @@ function stopMic() {
   micOn = false;
   if (recognition) { recognition.onend = null; recognition.stop(); recognition = null; }
   document.getElementById('mic-btn').classList.remove('on');
+  document.getElementById('btn-done').disabled = true;
   setStatus('idle', 'Click mic to enable voice');
 }
 
