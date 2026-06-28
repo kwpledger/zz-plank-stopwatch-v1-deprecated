@@ -118,7 +118,65 @@
     .btn.stop  { border-color: var(--danger); color: var(--danger); }
     .btn:disabled { opacity: 0.35; pointer-events: none; }
 
-    /* Personal bests */
+    /* All-time best inline display */
+    #best-display {
+      font-size: 0.85rem;
+      color: var(--muted);
+      min-height: 1.2rem;
+      text-align: center;
+    }
+
+    #best-display .best-val {
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+
+    /* Post-session result card */
+    #result-card {
+      width: 100%;
+      max-width: 380px;
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1rem 1.25rem;
+      display: none;
+      flex-direction: column;
+      gap: 0.35rem;
+      animation: slide-in 0.25s ease;
+    }
+
+    #result-card.new-best-card { border-color: var(--accent); }
+
+    @keyframes slide-in {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    #result-card .result-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    #result-card .result-label.is-best { color: var(--accent); }
+
+    #result-card .result-time {
+      font-size: 2rem;
+      font-variant-numeric: tabular-nums;
+      font-weight: 300;
+      line-height: 1.1;
+    }
+
+    #result-card .result-delta {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    #result-card .result-delta.positive { color: var(--accent); }
+
+    /* Personal bests history */
     #pb-section {
       width: 100%;
       max-width: 380px;
@@ -150,21 +208,32 @@
       padding: 0 1rem 0.75rem;
       display: flex;
       flex-direction: column;
-      gap: 0.4rem;
+      gap: 0;
     }
 
     .pb-row {
-      display: flex;
-      justify-content: space-between;
+      display: grid;
+      grid-template-columns: 1.5rem 1fr auto;
       align-items: center;
-      font-size: 0.9rem;
-      padding: 0.35rem 0;
+      gap: 0.6rem;
+      font-size: 0.88rem;
+      padding: 0.5rem 0;
       border-top: 1px solid var(--border);
     }
 
-    .pb-row .pb-time { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--accent); }
-    .pb-row .pb-date { color: var(--muted); font-size: 0.8rem; }
-    .pb-row.new-best .pb-time::after { content: " 🏆"; }
+    .pb-row .pb-rank { color: var(--muted); font-size: 0.75rem; text-align: right; }
+    .pb-row:first-child .pb-rank { color: var(--accent); font-size: 0.9rem; }
+
+    .pb-row .pb-center { display: flex; flex-direction: column; gap: 0.25rem; }
+
+    .pb-row .pb-time { font-variant-numeric: tabular-nums; font-weight: 600; }
+    .pb-row:first-child .pb-time { color: var(--accent); }
+
+    .pb-row .pb-bar-wrap { height: 3px; background: var(--border); border-radius: 2px; }
+    .pb-row .pb-bar      { height: 3px; background: var(--accent); border-radius: 2px; opacity: 0.5; }
+    .pb-row:first-child .pb-bar { opacity: 1; }
+
+    .pb-row .pb-date { color: var(--muted); font-size: 0.78rem; white-space: nowrap; }
 
     #pb-empty { color: var(--muted); font-size: 0.85rem; font-style: italic; padding: 0.25rem 0; }
 
@@ -195,6 +264,8 @@
 
   <div id="timer">0:00.0</div>
 
+  <div id="best-display"></div>
+
   <div id="status">
     <span class="dot"></span>
     <span id="status-text">Click mic to enable voice</span>
@@ -207,6 +278,12 @@
   <div class="btn-row">
     <button class="btn start" id="btn-start" onclick="startTimer()">Start</button>
     <button class="btn stop"  id="btn-stop"  onclick="stopTimer()" disabled>Stop</button>
+  </div>
+
+  <div id="result-card">
+    <span class="result-label" id="result-label">Last session</span>
+    <span class="result-time" id="result-time"></span>
+    <span class="result-delta" id="result-delta"></span>
   </div>
 
   <details id="pb-section">
@@ -257,8 +334,10 @@ function stopTimer() {
   document.getElementById('btn-stop').disabled  = true;
 
   const seconds = elapsed / 1000;
+  const prevBest = loadPBs()[0]?.seconds ?? null;
   savePB(seconds);
   renderPBs();
+  showResult(seconds, prevBest);
   speak(`Stopped. Time: ${formatSpoken(seconds)}`);
   setStatus(micOn ? 'listening' : 'idle', micOn ? 'Listening…' : 'Click mic to enable voice');
   elapsed = 0;
@@ -384,11 +463,59 @@ function loadPBs() {
 }
 
 function savePB(seconds) {
-  if (seconds < 2) return; // ignore accidental stops
+  if (seconds < 2) return;
   const pbs = loadPBs();
   pbs.push({ seconds: Math.round(seconds * 10) / 10, date: new Date().toISOString() });
   pbs.sort((a, b) => b.seconds - a.seconds);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(pbs.slice(0, 10)));
+}
+
+function renderBestDisplay() {
+  const pbs = loadPBs();
+  const el  = document.getElementById('best-display');
+  if (pbs.length === 0) { el.textContent = ''; return; }
+  el.innerHTML = `Best: <span class="best-val">${formatClock(pbs[0].seconds)}</span>`;
+}
+
+function showResult(seconds, prevBest) {
+  if (seconds < 2) return;
+  const card  = document.getElementById('result-card');
+  const label = document.getElementById('result-label');
+  const time  = document.getElementById('result-time');
+  const delta = document.getElementById('result-delta');
+
+  const isNewBest = prevBest === null || seconds > prevBest;
+
+  card.style.display = 'flex';
+  card.className = isNewBest ? 'new-best-card' : '';
+
+  if (isNewBest) {
+    label.textContent = 'New personal best!';
+    label.className   = 'result-label is-best';
+    delta.textContent = prevBest ? `+${formatDelta(seconds - prevBest)} over previous best` : 'First recorded session';
+    delta.className   = 'result-delta positive';
+  } else {
+    label.textContent = 'Last session';
+    label.className   = 'result-label';
+    const gap = prevBest - seconds;
+    delta.textContent = `${formatDelta(gap)} short of your best (${formatClock(prevBest)})`;
+    delta.className   = 'result-delta';
+  }
+
+  time.textContent = formatClock(seconds);
+}
+
+function formatClock(secs) {
+  const m = Math.floor(secs / 60);
+  const s = (secs % 60).toFixed(0).padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function formatDelta(secs) {
+  if (secs < 60) return `${Math.round(secs)}s`;
+  const m = Math.floor(secs / 60);
+  const s = Math.round(secs % 60);
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
 }
 
 function renderPBs() {
@@ -396,26 +523,35 @@ function renderPBs() {
   const list = document.getElementById('pb-list');
   const empty = document.getElementById('pb-empty');
 
+  renderBestDisplay();
+
   if (pbs.length === 0) { empty.style.display = ''; return; }
   empty.style.display = 'none';
 
-  const existing = list.querySelectorAll('.pb-row');
-  existing.forEach(el => el.remove());
+  list.querySelectorAll('.pb-row').forEach(el => el.remove());
+
+  const best = pbs[0].seconds;
 
   pbs.forEach((pb, i) => {
     const row  = document.createElement('div');
-    row.className = 'pb-row' + (i === 0 ? ' new-best' : '');
+    row.className = 'pb-row';
     const date = new Date(pb.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    row.innerHTML = `<span class="pb-time">${formatSpoken(pb.seconds)}</span><span class="pb-date">${date}</span>`;
+    const pct  = Math.round((pb.seconds / best) * 100);
+    const rank = i === 0 ? '🏆' : `#${i + 1}`;
+    row.innerHTML = `
+      <span class="pb-rank">${rank}</span>
+      <span class="pb-center">
+        <span class="pb-time">${formatClock(pb.seconds)}</span>
+        <span class="pb-bar-wrap"><span class="pb-bar" style="width:${pct}%"></span></span>
+      </span>
+      <span class="pb-date">${date}</span>`;
     list.appendChild(row);
   });
-
-  // Open the section so the user sees their result
-  document.getElementById('pb-section').open = true;
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 renderPBs();
+renderBestDisplay();
 </script>
 </body>
 </html>
