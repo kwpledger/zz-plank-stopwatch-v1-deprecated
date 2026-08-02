@@ -416,7 +416,7 @@ function startMic() {
 
   recognition = new SpeechRecognition();
   recognition.continuous    = true;
-  recognition.interimResults = false;
+  recognition.interimResults = true;
   recognition.lang          = 'en-US';
 
   recognition.onstart = () => {
@@ -428,12 +428,16 @@ function startMic() {
 
   recognition.onresult = (e) => {
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (!e.results[i].isFinal) continue;
-      const word = e.results[i][0].transcript.trim().toLowerCase();
-      showHeard(word);
-      if (!running && START_WORDS.has(word))  startTimer();
-      if ( running && STOP_WORDS.has(word))   stopTimer();
-      if ( running && DONE_WORDS.has(word))   doneSession();
+      // Check interim results immediately instead of waiting for isFinal!
+      const transcript = e.results[i][0].transcript.trim().toLowerCase();
+    
+      // Check if any word in the transcript matches your command
+      const words = transcript.split(/\s+/);
+      for (const word of words) {
+        if (!running && START_WORDS.has(word)) { startTimer(); break; }
+        if (running && STOP_WORDS.has(word))   { stopTimer(); break; }
+        if (running && DONE_WORDS.has(word))   { doneSession(); break; }
+      }
     }
   };
 
